@@ -489,41 +489,65 @@ function resetStreak(){state.streak=0;updateScore();saveState();}
 function shuffle(a){const b=[...a];for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]];}return b;}
 function gcd(a,b){a=Math.abs(a);b=Math.abs(b);while(b){[a,b]=[b,a%b];}return a;}
 function lcmOf(a,b){return(a*b)/gcd(a,b);}
-// スマホ対応の音声再生
-let speechReady=false;
-function initSpeech(){
-  if(speechReady)return;
+// ===== 音声再生（スマホ対応） =====
+let speechVoices=[];
+let speechMethod='none'; // 'api' or 'none'
+
+// 音声リストを読み込む
+function loadVoices(){
   if('speechSynthesis' in window){
-    const dummy=new SpeechSynthesisUtterance('');
-    dummy.volume=0;
-    window.speechSynthesis.speak(dummy);
-    speechReady=true;
+    speechVoices=window.speechSynthesis.getVoices();
+    if(speechVoices.length>0) speechMethod='api';
   }
 }
-// 最初のタップで音声を有効化
-document.addEventListener('click',initSpeech,{once:true});
-document.addEventListener('touchstart',initSpeech,{once:true});
+if('speechSynthesis' in window){
+  loadVoices();
+  window.speechSynthesis.onvoiceschanged=loadVoices;
+  // Android対策：少し待ってから再読み込み
+  setTimeout(loadVoices,500);
+  setTimeout(loadVoices,1500);
+}
 
 function speak(text){
-  if(!('speechSynthesis' in window))return;
-  window.speechSynthesis.cancel();
-  // iOS対策：少し遅らせて発話
-  setTimeout(()=>{
-    const u=new SpeechSynthesisUtterance(text);
-    u.lang='en-US';
-    u.rate=0.8;
-    u.volume=1;
-    // 利用可能な英語の声を探す
-    const voices=window.speechSynthesis.getVoices();
-    const enVoice=voices.find(v=>v.lang.startsWith('en'));
-    if(enVoice)u.voice=enVoice;
-    window.speechSynthesis.speak(u);
-  },50);
+  if(!text)return;
+  if('speechSynthesis' in window){
+    try{
+      // Android対策：cancel後に少し待つ
+      window.speechSynthesis.cancel();
+      // 音声リストを最新に
+      const voices=window.speechSynthesis.getVoices();
+      const u=new SpeechSynthesisUtterance(text);
+      u.lang='en-US';
+      u.rate=0.85;
+      u.pitch=1;
+      u.volume=1;
+      // 英語の声を探す
+      const enVoice=voices.find(v=>v.lang==='en-US')
+        ||voices.find(v=>v.lang.startsWith('en'))
+        ||voices[0];
+      if(enVoice)u.voice=enVoice;
+      // Android Chromeのバグ対策：一度resumeする
+      window.speechSynthesis.resume();
+      window.speechSynthesis.speak(u);
+      // Android対策：15秒以上経つと止まるバグへの対処
+      let keepAlive=setInterval(()=>{
+        if(!window.speechSynthesis.speaking){clearInterval(keepAlive);}
+        else{window.speechSynthesis.pause();window.speechSynthesis.resume();}
+      },5000);
+      u.onend=()=>clearInterval(keepAlive);
+      u.onerror=()=>clearInterval(keepAlive);
+    }catch(e){}
+  }
 }
-// 音声リストを事前に読み込む
-if('speechSynthesis' in window){
-  window.speechSynthesis.getVoices();
-  window.speechSynthesis.onvoiceschanged=()=>{window.speechSynthesis.getVoices();};
+
+// 音声テスト
+function testSound(){
+  speak('Hello! Can you hear me?');
+  const el=$('soundTestResult');
+  if(el){
+    const voices=('speechSynthesis' in window)?window.speechSynthesis.getVoices():[];
+    el.innerHTML='音声エンジン: '+(voices.length>0?'✅ '+voices.length+'個の声':'❌ 見つからない');
+  }
 }
 function $(id){return document.getElementById(id);}
 function setTheme(t){document.body.className='theme-'+t;}
@@ -541,6 +565,10 @@ function goHome(){
     <div class="card" style="text-align:center">
       <h2 style="color:#333;margin-bottom:6px;">教科をえらぼう！</h2>
       <p style="color:#888;font-size:0.9rem;">小学校高学年向け</p>
+      <div style="margin-top:14px;">
+        <button class="btn btn-orange" onclick="testSound()" style="padding:10px 20px;font-size:0.9rem;">🔊 音声テスト</button>
+        <div id="soundTestResult" style="margin-top:8px;font-size:0.85rem;color:#888;"></div>
+      </div>
     </div>
     <div class="subject-grid">
       <div class="subject-card s-english" onclick="selectSubject('english')">
