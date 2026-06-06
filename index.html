@@ -490,63 +490,89 @@ function shuffle(a){const b=[...a];for(let i=b.length-1;i>0;i--){const j=Math.fl
 function gcd(a,b){a=Math.abs(a);b=Math.abs(b);while(b){[a,b]=[b,a%b];}return a;}
 function lcmOf(a,b){return(a*b)/gcd(a,b);}
 // ===== 音声再生（スマホ対応） =====
-let speechVoices=[];
-let speechMethod='none'; // 'api' or 'none'
+// 方法1: Web Speech API（PCやiPhone向け）
+// 方法2: オンライン音声（音声エンジンがないAndroid向け）
+let hasVoices=false;
 
-// 音声リストを読み込む
 function loadVoices(){
   if('speechSynthesis' in window){
-    speechVoices=window.speechSynthesis.getVoices();
-    if(speechVoices.length>0) speechMethod='api';
+    const v=window.speechSynthesis.getVoices();
+    if(v.length>0) hasVoices=true;
   }
 }
 if('speechSynthesis' in window){
   loadVoices();
   window.speechSynthesis.onvoiceschanged=loadVoices;
-  // Android対策：少し待ってから再読み込み
   setTimeout(loadVoices,500);
-  setTimeout(loadVoices,1500);
 }
 
 function speak(text){
   if(!text)return;
-  if('speechSynthesis' in window){
+  // 音声エンジンがあればWeb Speech APIを使う
+  if(hasVoices && 'speechSynthesis' in window){
     try{
-      // Android対策：cancel後に少し待つ
       window.speechSynthesis.cancel();
-      // 音声リストを最新に
       const voices=window.speechSynthesis.getVoices();
       const u=new SpeechSynthesisUtterance(text);
       u.lang='en-US';
       u.rate=0.85;
-      u.pitch=1;
       u.volume=1;
-      // 英語の声を探す
       const enVoice=voices.find(v=>v.lang==='en-US')
         ||voices.find(v=>v.lang.startsWith('en'))
         ||voices[0];
       if(enVoice)u.voice=enVoice;
-      // Android Chromeのバグ対策：一度resumeする
       window.speechSynthesis.resume();
       window.speechSynthesis.speak(u);
-      // Android対策：15秒以上経つと止まるバグへの対処
-      let keepAlive=setInterval(()=>{
-        if(!window.speechSynthesis.speaking){clearInterval(keepAlive);}
-        else{window.speechSynthesis.pause();window.speechSynthesis.resume();}
-      },5000);
-      u.onend=()=>clearInterval(keepAlive);
-      u.onerror=()=>clearInterval(keepAlive);
+      return;
     }catch(e){}
   }
+  // 音声エンジンがない場合：オンライン音声を使う
+  speakOnline(text);
+}
+
+// オンライン音声再生（複数のURLを試す）
+function speakOnline(text){
+  const encoded=encodeURIComponent(text);
+  const urls=[
+    'https://translate.googleapis.com/translate_tts?ie=UTF-8&client=gtx&tl=en&q='+encoded,
+    'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=en&q='+encoded
+  ];
+  tryPlayAudio(urls,0);
+}
+
+function tryPlayAudio(urls,index){
+  if(index>=urls.length)return;
+  const audio=new Audio();
+  audio.crossOrigin='anonymous';
+  audio.src=urls[index];
+  audio.volume=1;
+  audio.play().then(()=>{
+    // 再生成功
+  }).catch(()=>{
+    // 失敗したら次のURLを試す
+    tryPlayAudio(urls,index+1);
+  });
 }
 
 // 音声テスト
 function testSound(){
-  speak('Hello! Can you hear me?');
   const el=$('soundTestResult');
-  if(el){
-    const voices=('speechSynthesis' in window)?window.speechSynthesis.getVoices():[];
-    el.innerHTML='音声エンジン: '+(voices.length>0?'✅ '+voices.length+'個の声':'❌ 見つからない');
+  if(el) el.innerHTML='🔄 テスト中...';
+
+  if(hasVoices){
+    speak('Hello! Can you hear me?');
+    if(el) el.innerHTML='✅ 音声エンジンあり（聞こえた？）';
+  } else {
+    // オンライン音声でテスト
+    const encoded=encodeURIComponent('Hello! Can you hear me?');
+    const audio=new Audio();
+    audio.src='https://translate.googleapis.com/translate_tts?ie=UTF-8&client=gtx&tl=en&q='+encoded;
+    audio.volume=1;
+    audio.play().then(()=>{
+      if(el) el.innerHTML='✅ オンライン音声で再生中（聞こえた？）';
+    }).catch((e)=>{
+      if(el) el.innerHTML='❌ 音声再生できません<br><span style="font-size:0.8rem;">Chromeブラウザで開いてみてください</span>';
+    });
   }
 }
 function $(id){return document.getElementById(id);}
