@@ -533,67 +533,51 @@ function speak(text){
 // オンライン音声再生
 function speakOnline(text){
   const encoded=encodeURIComponent(text);
-  // audio要素をDOMに追加して再生（new Audio()より確実）
-  let audio=document.getElementById('ttsAudio');
-  if(!audio){
-    audio=document.createElement('audio');
-    audio.id='ttsAudio';
-    document.body.appendChild(audio);
-  }
-  audio.src='https://translate.googleapis.com/translate_tts?ie=UTF-8&client=gtx&tl=en&q='+encoded;
-  audio.volume=1;
-  // 読み込み完了を待ってから再生
-  audio.load();
-  audio.oncanplaythrough=function(){
-    audio.play().catch(()=>{});
-  };
-  // 3秒以内に読み込めなかったら別URLで再試行
-  audio.onerror=function(){
-    audio.src='https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=en&q='+encoded;
-    audio.load();
-    audio.oncanplaythrough=function(){audio.play().catch(()=>{});};
-  };
+  const audio=new Audio('https://translate.googleapis.com/translate_tts?ie=UTF-8&client=gtx&tl=en&q='+encoded);
+  audio.play().catch(()=>{});
 }
 
-// 音声テスト
+// 音声テスト（詳細デバッグ付き）
 function testSound(){
   const el=$('soundTestResult');
-  if(el) el.innerHTML='🔄 テスト中...';
-
-  if(hasVoices){
-    speak('Hello');
-    if(el) el.innerHTML='✅ 音声エンジンあり（聞こえた？）';
-  } else {
-    // オンライン音声でテスト
-    const encoded=encodeURIComponent('Hello, can you hear me?');
-    let audio=document.getElementById('ttsAudio');
-    if(!audio){
-      audio=document.createElement('audio');
-      audio.id='ttsAudio';
-      document.body.appendChild(audio);
-    }
-    audio.src='https://translate.googleapis.com/translate_tts?ie=UTF-8&client=gtx&tl=en&q='+encoded;
-    audio.volume=1;
-    audio.load();
-    audio.oncanplaythrough=function(){
-      audio.play().then(()=>{
-        if(el) el.innerHTML='✅ オンライン音声で再生中！';
-      }).catch(()=>{
-        if(el) el.innerHTML='❌ 再生ブロックされました<br><span style="font-size:0.8rem;">下のボタンを試してね</span>';
-        showManualPlayBtn(audio);
-      });
-    };
-    audio.onerror=function(){
-      if(el) el.innerHTML='❌ 音声を取得できません<br><span style="font-size:0.8rem;">Androidの設定→Google→テキスト読み上げ<br>からGoogleの音声エンジンをONにしてみてください</span>';
-    };
-  }
-}
-
-// 手動再生ボタン（自動再生がブロックされた場合）
-function showManualPlayBtn(audio){
-  const el=$('soundTestResult');
   if(!el)return;
-  el.innerHTML+='<br><button class="btn btn-orange" style="margin-top:10px;padding:10px 20px;" onclick="document.getElementById(\'ttsAudio\').play()">▶ ここをタップして再生</button>';
+  el.innerHTML='🔄 テスト中...<br><br>';
+  let log='';
+
+  // テスト1: Web Speech API
+  log+='【テスト1】Web Speech API: ';
+  if('speechSynthesis' in window){
+    const voices=window.speechSynthesis.getVoices();
+    log+=voices.length+'個の声<br>';
+  } else {
+    log+='非対応<br>';
+  }
+
+  // テスト2: Audio要素（シンプル）
+  log+='【テスト2】Audio再生: ';
+  try{
+    const a=new Audio('https://translate.googleapis.com/translate_tts?ie=UTF-8&client=gtx&tl=en&q=hello');
+    a.play().then(()=>{
+      el.innerHTML=log+'✅ 成功！聞こえた？<br><br>聞こえたら音声は使えます！';
+    }).catch((e)=>{
+      log+='❌ play()失敗: '+e.message+'<br>';
+      // テスト3: 手動タップで再生
+      log+='<br>【テスト3】タップで再生してみて：<br>';
+      log+='<button class="btn btn-orange" style="margin-top:8px;padding:12px 24px;font-size:1.1rem;" id="manualPlayBtn">▶ ここをタップ！</button><br>';
+      el.innerHTML=log;
+      $('manualPlayBtn').onclick=function(){
+        const a2=new Audio('https://translate.googleapis.com/translate_tts?ie=UTF-8&client=gtx&tl=en&q=hello');
+        a2.play().then(()=>{
+          el.innerHTML='✅ タップ再生 成功！<br>音声ボタンは使えます！';
+        }).catch((e2)=>{
+          el.innerHTML='❌ タップでも失敗: '+e2.message+'<br><br>このスマホではオンライン音声を再生できないようです。<br>代わりにカタカナ読みを参考にしてください。';
+        });
+      };
+    });
+  }catch(e){
+    log+='❌ エラー: '+e.message+'<br>';
+    el.innerHTML=log;
+  }
 }
 function $(id){return document.getElementById(id);}
 function setTheme(t){document.body.className='theme-'+t;}
@@ -651,31 +635,34 @@ function renderSubjectHome(){
   let catHTML='';
 
   if(subj==='english'){
+    if(!state.mode) state.mode='learn';
+    const m=state.mode;
     navHTML=`
       <div class="nav-tabs">
-        <button class="nav-tab active" onclick="setEngMode('learn')">カード</button>
-        <button class="nav-tab" onclick="setEngMode('quiz')">クイズ</button>
-        <button class="nav-tab" onclick="setEngMode('listening')">リスニング</button>
-        <button class="nav-tab" onclick="setEngMode('wordlist')">単語帳</button>
+        <button class="nav-tab ${m==='learn'?'active':''}" onclick="setEngMode('learn')">カード</button>
+        <button class="nav-tab ${m==='quiz'?'active':''}" onclick="setEngMode('quiz')">クイズ</button>
+        <button class="nav-tab ${m==='listening'?'active':''}" onclick="setEngMode('listening')">リスニング</button>
+        <button class="nav-tab ${m==='wordlist'?'active':''}" onclick="setEngMode('wordlist')">単語帳</button>
       </div>`;
-    state.mode='learn';
     catHTML=buildCatGrid(ENGLISH_DATA);
   } else if(subj==='math'){
+    if(!state.mode) state.mode='quiz';
+    const m=state.mode;
     navHTML=`
       <div class="nav-tabs">
-        <button class="nav-tab active" onclick="setMathMode('quiz')">チャレンジ</button>
-        <button class="nav-tab" onclick="setMathMode('practice')">れんしゅう</button>
+        <button class="nav-tab ${m==='quiz'?'active':''}" onclick="setMathMode('quiz')">チャレンジ</button>
+        <button class="nav-tab ${m==='practice'?'active':''}" onclick="setMathMode('practice')">れんしゅう</button>
       </div>`;
-    state.mode='quiz';
     catHTML=buildMathCatGrid();
   } else {
+    if(!state.mode) state.mode='quiz';
+    const m=state.mode;
     navHTML=`
       <div class="nav-tabs">
-        <button class="nav-tab active" onclick="setJpMode('quiz')">クイズ</button>
-        <button class="nav-tab" onclick="setJpMode('cards')">カード</button>
-        <button class="nav-tab" onclick="setJpMode('list')">一覧</button>
+        <button class="nav-tab ${m==='quiz'?'active':''}" onclick="setJpMode('quiz')">クイズ</button>
+        <button class="nav-tab ${m==='cards'?'active':''}" onclick="setJpMode('cards')">カード</button>
+        <button class="nav-tab ${m==='list'?'active':''}" onclick="setJpMode('list')">一覧</button>
       </div>`;
-    state.mode='quiz';
     catHTML=buildCatGrid(KOKUGO_DATA);
   }
 
