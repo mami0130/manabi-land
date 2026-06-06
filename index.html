@@ -530,28 +530,29 @@ function speak(text){
   speakOnline(text);
 }
 
-// オンライン音声再生（複数のURLを試す）
+// オンライン音声再生
 function speakOnline(text){
   const encoded=encodeURIComponent(text);
-  const urls=[
-    'https://translate.googleapis.com/translate_tts?ie=UTF-8&client=gtx&tl=en&q='+encoded,
-    'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=en&q='+encoded
-  ];
-  tryPlayAudio(urls,0);
-}
-
-function tryPlayAudio(urls,index){
-  if(index>=urls.length)return;
-  const audio=new Audio();
-  audio.crossOrigin='anonymous';
-  audio.src=urls[index];
+  // audio要素をDOMに追加して再生（new Audio()より確実）
+  let audio=document.getElementById('ttsAudio');
+  if(!audio){
+    audio=document.createElement('audio');
+    audio.id='ttsAudio';
+    document.body.appendChild(audio);
+  }
+  audio.src='https://translate.googleapis.com/translate_tts?ie=UTF-8&client=gtx&tl=en&q='+encoded;
   audio.volume=1;
-  audio.play().then(()=>{
-    // 再生成功
-  }).catch(()=>{
-    // 失敗したら次のURLを試す
-    tryPlayAudio(urls,index+1);
-  });
+  // 読み込み完了を待ってから再生
+  audio.load();
+  audio.oncanplaythrough=function(){
+    audio.play().catch(()=>{});
+  };
+  // 3秒以内に読み込めなかったら別URLで再試行
+  audio.onerror=function(){
+    audio.src='https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=en&q='+encoded;
+    audio.load();
+    audio.oncanplaythrough=function(){audio.play().catch(()=>{});};
+  };
 }
 
 // 音声テスト
@@ -560,20 +561,39 @@ function testSound(){
   if(el) el.innerHTML='🔄 テスト中...';
 
   if(hasVoices){
-    speak('Hello! Can you hear me?');
+    speak('Hello');
     if(el) el.innerHTML='✅ 音声エンジンあり（聞こえた？）';
   } else {
     // オンライン音声でテスト
-    const encoded=encodeURIComponent('Hello! Can you hear me?');
-    const audio=new Audio();
+    const encoded=encodeURIComponent('Hello, can you hear me?');
+    let audio=document.getElementById('ttsAudio');
+    if(!audio){
+      audio=document.createElement('audio');
+      audio.id='ttsAudio';
+      document.body.appendChild(audio);
+    }
     audio.src='https://translate.googleapis.com/translate_tts?ie=UTF-8&client=gtx&tl=en&q='+encoded;
     audio.volume=1;
-    audio.play().then(()=>{
-      if(el) el.innerHTML='✅ オンライン音声で再生中（聞こえた？）';
-    }).catch((e)=>{
-      if(el) el.innerHTML='❌ 音声再生できません<br><span style="font-size:0.8rem;">Chromeブラウザで開いてみてください</span>';
-    });
+    audio.load();
+    audio.oncanplaythrough=function(){
+      audio.play().then(()=>{
+        if(el) el.innerHTML='✅ オンライン音声で再生中！';
+      }).catch(()=>{
+        if(el) el.innerHTML='❌ 再生ブロックされました<br><span style="font-size:0.8rem;">下のボタンを試してね</span>';
+        showManualPlayBtn(audio);
+      });
+    };
+    audio.onerror=function(){
+      if(el) el.innerHTML='❌ 音声を取得できません<br><span style="font-size:0.8rem;">Androidの設定→Google→テキスト読み上げ<br>からGoogleの音声エンジンをONにしてみてください</span>';
+    };
   }
+}
+
+// 手動再生ボタン（自動再生がブロックされた場合）
+function showManualPlayBtn(audio){
+  const el=$('soundTestResult');
+  if(!el)return;
+  el.innerHTML+='<br><button class="btn btn-orange" style="margin-top:10px;padding:10px 20px;" onclick="document.getElementById(\'ttsAudio\').play()">▶ ここをタップして再生</button>';
 }
 function $(id){return document.getElementById(id);}
 function setTheme(t){document.body.className='theme-'+t;}
